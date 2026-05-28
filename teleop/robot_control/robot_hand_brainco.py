@@ -20,7 +20,8 @@ kTopicbraincoRightState = "rt/brainco/right/state"
 
 class Brainco_Controller_ctrl:
     def __init__(self, left_gripper_trigger_in, left_gripper_squeeze_in, right_gripper_trigger_in, right_gripper_squeeze_in, 
-                       dual_hand_data_lock = None, dual_hand_state_array = None, dual_hand_action_array = None, fps = 100.0, Unit_Test = False, simulation_mode = False):
+                       dual_hand_data_lock = None, dual_hand_state_array = None, dual_hand_action_array = None, fps = 100.0, Unit_Test = False, simulation_mode = False,
+                       xr_motion_data_ready_in = None):
         logger_mp.info("Initialize Brainco_Controller_ctrl...")
         self.fps = fps
         self.hand_sub_ready = False
@@ -58,7 +59,8 @@ class Brainco_Controller_ctrl:
         logger_mp.info("[Brainco_Controller_ctrl] Subscribe dds ok.")
 
         hand_control_process = Process(target=self.control_process, args=(left_gripper_trigger_in, left_gripper_squeeze_in, right_gripper_trigger_in, right_gripper_squeeze_in, 
-                                                                          self.left_hand_state_array, self.right_hand_state_array, dual_hand_data_lock, dual_hand_state_array, dual_hand_action_array))
+                                                                          self.left_hand_state_array, self.right_hand_state_array, dual_hand_data_lock, dual_hand_state_array, dual_hand_action_array,
+                                                                          xr_motion_data_ready_in))
         hand_control_process.daemon = True
         hand_control_process.start()
 
@@ -92,7 +94,8 @@ class Brainco_Controller_ctrl:
         # logger_mp.debug("hand ctrl publish ok.")
     
     def control_process(self, left_gripper_trigger_in, left_gripper_squeeze_in, right_gripper_trigger_in, right_gripper_squeeze_in,
-                              left_hand_state_array, right_hand_state_array, dual_hand_data_lock = None, dual_hand_state_array = None, dual_hand_action_array = None):
+                              left_hand_state_array, right_hand_state_array, dual_hand_data_lock = None, dual_hand_state_array = None, dual_hand_action_array = None,
+                              xr_motion_data_ready_in = None):
         self.running = True
 
         left_q_target  = np.full(brainco_Num_Motors, 0.0, dtype=float)
@@ -124,25 +127,31 @@ class Brainco_Controller_ctrl:
                     right_trigger_value = right_gripper_trigger_in.value
                 with right_gripper_squeeze_in.get_lock():
                     right_squeeze_value = right_gripper_squeeze_in.value
+                if xr_motion_data_ready_in is not None:
+                    with xr_motion_data_ready_in.get_lock():
+                        xr_motion_data_ready = xr_motion_data_ready_in.value
+                else:
+                    xr_motion_data_ready = True
 
                 state_data = np.concatenate((np.array(left_hand_state_array[:]), np.array(right_hand_state_array[:])))
 
-                # In the official document, the angles are in the range [0, 1] ==> 0.0: fully open  1.0: fully closed
-                left_triger_value = (10.0 - left_trigger_value) / 10.0
-                left_q_target[0]  = np.clip((left_triger_value - 0.5) / 0.5, 0.0, 0.98) # thumb-aux
-                left_q_target[1]  = np.clip(left_triger_value / 0.5, 0.0, 0.7) # thumb
-                left_q_target[2]  = np.clip(left_squeeze_value, 0.0, 0.98)                   # index
-                left_q_target[3]  = np.clip(left_triger_value, 0.0, 0.98)   # middle
-                left_q_target[4]  = np.clip(left_triger_value, 0.0, 0.98)   # ring
-                left_q_target[5]  = np.clip(left_triger_value, 0.0, 0.98)   # pinky
+                if xr_motion_data_ready:
+                    # In the official document, the angles are in the range [0, 1] ==> 0.0: fully open  1.0: fully closed
+                    left_triger_value = (10.0 - left_trigger_value) / 10.0
+                    left_q_target[0]  = np.clip((left_triger_value - 0.5) / 0.5, 0.0, 0.98) # thumb-aux
+                    left_q_target[1]  = np.clip(left_triger_value / 0.5, 0.0, 0.7) # thumb
+                    left_q_target[2]  = np.clip(left_squeeze_value, 0.0, 0.98)                   # index
+                    left_q_target[3]  = np.clip(left_triger_value, 0.0, 0.98)   # middle
+                    left_q_target[4]  = np.clip(left_triger_value, 0.0, 0.98)   # ring
+                    left_q_target[5]  = np.clip(left_triger_value, 0.0, 0.98)   # pinky
 
-                right_triger_value = (10.0 - right_trigger_value) / 10.0
-                right_q_target[0] = np.clip((right_triger_value - 0.5) / 0.5, 0.0, 0.98) 
-                right_q_target[1] = np.clip(right_triger_value / 0.5, 0.0, 0.7)
-                right_q_target[2] = np.clip(right_squeeze_value, 0.0, 0.98)                  # index
-                right_q_target[3] = np.clip(right_triger_value, 0.0, 0.98)  # middle
-                right_q_target[4] = np.clip(right_triger_value, 0.0, 0.98)  # ring
-                right_q_target[5] = np.clip(right_triger_value, 0.0, 0.98)  # pinky
+                    right_triger_value = (10.0 - right_trigger_value) / 10.0
+                    right_q_target[0] = np.clip((right_triger_value - 0.5) / 0.5, 0.0, 0.98)
+                    right_q_target[1] = np.clip(right_triger_value / 0.5, 0.0, 0.7)
+                    right_q_target[2] = np.clip(right_squeeze_value, 0.0, 0.98)                  # index
+                    right_q_target[3] = np.clip(right_triger_value, 0.0, 0.98)  # middle
+                    right_q_target[4] = np.clip(right_triger_value, 0.0, 0.98)  # ring
+                    right_q_target[5] = np.clip(right_triger_value, 0.0, 0.98)  # pinky
 
                 # get dual hand state
                 action_data = np.concatenate((left_q_target, right_q_target))
@@ -162,7 +171,7 @@ class Brainco_Controller_ctrl:
 
 class Brainco_Controller_hand:
     def __init__(self, left_hand_array, right_hand_array, dual_hand_data_lock = None, dual_hand_state_array = None,
-                       dual_hand_action_array = None, fps = 100.0, Unit_Test = False, simulation_mode = False):
+                       dual_hand_action_array = None, fps = 100.0, Unit_Test = False, simulation_mode = False, xr_motion_data_ready_in = None):
         logger_mp.info("Initialize Brainco_Controller_hand...")
         self.fps = fps
         self.hand_sub_ready = False
@@ -201,7 +210,7 @@ class Brainco_Controller_hand:
         logger_mp.info("[Brainco_Controller_hand] Subscribe dds ok.")
 
         hand_control_process = Process(target=self.control_process, args=(left_hand_array, right_hand_array,  self.left_hand_state_array, self.right_hand_state_array,
-                                                                          dual_hand_data_lock, dual_hand_state_array, dual_hand_action_array))
+                                                                          dual_hand_data_lock, dual_hand_state_array, dual_hand_action_array, xr_motion_data_ready_in))
         hand_control_process.daemon = True
         hand_control_process.start()
 
@@ -235,7 +244,7 @@ class Brainco_Controller_hand:
         # logger_mp.debug("hand ctrl publish ok.")
     
     def control_process(self, left_hand_array, right_hand_array, left_hand_state_array, right_hand_state_array,
-                              dual_hand_data_lock = None, dual_hand_state_array = None, dual_hand_action_array = None):
+                              dual_hand_data_lock = None, dual_hand_state_array = None, dual_hand_action_array = None, xr_motion_data_ready_in = None):
         self.running = True
 
         left_q_target  = np.full(brainco_Num_Motors, 0.0, dtype=float)
@@ -262,11 +271,16 @@ class Brainco_Controller_hand:
                     left_hand_data  = np.array(left_hand_array[:]).reshape(25, 3).copy()
                 with right_hand_array.get_lock():
                     right_hand_data = np.array(right_hand_array[:]).reshape(25, 3).copy()
+                if xr_motion_data_ready_in is not None:
+                    with xr_motion_data_ready_in.get_lock():
+                        xr_motion_data_ready = xr_motion_data_ready_in.value
+                else:
+                    xr_motion_data_ready = True
 
                 # Read left and right q_state from shared arrays
                 state_data = np.concatenate((np.array(left_hand_state_array[:]), np.array(right_hand_state_array[:])))
 
-                if not np.all(right_hand_data == 0.0) and not np.all(left_hand_data[4] == np.array([-1.13, 0.3, 0.15])): # if hand data has been initialized.
+                if xr_motion_data_ready:
                     ref_left_value = left_hand_data[self.hand_retargeting.left_indices[1,:]] - left_hand_data[self.hand_retargeting.left_indices[0,:]]
                     ref_right_value = right_hand_data[self.hand_retargeting.right_indices[1,:]] - right_hand_data[self.hand_retargeting.right_indices[0,:]]
 
