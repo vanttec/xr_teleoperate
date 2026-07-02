@@ -3,8 +3,8 @@ import argparse
 from multiprocessing import Value, Array, Lock
 import threading
 import logging_mp
-logging_mp.basicConfig(level=logging_mp.INFO)
-logger_mp = logging_mp.getLogger(__name__)
+logging_mp.basic_config(level=logging_mp.INFO)
+logger_mp = logging_mp.get_logger(__name__)
 
 import os 
 import sys
@@ -29,6 +29,11 @@ def publish_reset_category(category: int, publisher): # Scene Reset signal
     msg = String_(data=str(category))
     publisher.Write(msg)
     logger_mp.info(f"published reset category: {category}")
+
+def read_camera_frame(get_frame_fn):
+    """Return BGR image from teleimager (img, fps) tuple API."""
+    frame, _fps = get_frame_fn()
+    return frame
 
 # state transition
 START          = False  # Enable to start robot following VR user motion
@@ -117,10 +122,23 @@ if __name__ == '__main__':
             listen_keyboard_thread.start()
 
         # image client
-        img_client = ImageClient(host=args.img_server_ip, request_bgr=True)
+        img_client = ImageClient(host=args.img_server_ip)
         camera_config = img_client.get_cam_config()
         logger_mp.debug(f"Camera config: {camera_config}")
-        xr_need_local_img = not (args.display_mode == 'pass-through' or camera_config['head_camera']['enable_webrtc'])
+
+        head_use_zmq = camera_config['head_camera']['enable_zmq']
+        head_use_webrtc = camera_config['head_camera']['enable_webrtc']
+        if args.sim:
+            # In local sim, Quest cannot reach 127.0.0.1 WebRTC; stream via ZMQ + render_to_xr.
+            head_use_webrtc = False
+            head_use_zmq = True
+
+        if args.display_mode == 'pass-through':
+            xr_need_local_img = False
+        elif head_use_webrtc:
+            xr_need_local_img = False
+        else:
+            xr_need_local_img = head_use_zmq
 
         # televuer_wrapper: obtain hand pose data from the XR device and transmit the robot's head camera image to the XR device.
         tv_wrapper = TeleVuerWrapper(use_hand_tracking=args.input_mode == "hand", 
@@ -130,8 +148,8 @@ if __name__ == '__main__':
                                      # https://github.com/unitreerobotics/xr_teleoperate/issues/172
                                      # display_fps=camera_config['head_camera']['fps'] ? args.frequency? 30.0?
                                      display_mode=args.display_mode,
-                                     zmq=camera_config['head_camera']['enable_zmq'],
-                                     webrtc=camera_config['head_camera']['enable_webrtc'],
+                                     zmq=head_use_zmq,
+                                     webrtc=head_use_webrtc,
                                      webrtc_url=f"https://{args.img_server_ip}:{camera_config['head_camera']['webrtc_port']}/offer",
                                      arm_reference_mode="head_yaw"
                                      )
@@ -270,9 +288,9 @@ if __name__ == '__main__':
         while not START and not STOP: # wait for start or stop signal.
             time.sleep(0.033)
             if camera_config['head_camera']['enable_zmq'] and xr_need_local_img:
-                head_img = img_client.get_head_frame()
-                if head_img.bgr is not None:
-                    tv_wrapper.render_to_xr(head_img.bgr)
+                head_img = read_camera_frame(img_client.get_head_frame)
+                if head_img is not None:
+                    tv_wrapper.render_to_xr(head_img)
 
         logger_mp.info("---------------------🚀start Tracking🚀-------------------------")
         arm_ctrl.speed_gradual_max()
@@ -287,15 +305,15 @@ if __name__ == '__main__':
             # get image
             if camera_config['head_camera']['enable_zmq']:
                 if args.record or xr_need_local_img:
-                    head_img = img_client.get_head_frame()
-                if xr_need_local_img and head_img.bgr is not None:
-                    tv_wrapper.render_to_xr(head_img.bgr)
+                    head_img = read_camera_frame(img_client.get_head_frame)
+                if xr_need_local_img and head_img is not None:
+                    tv_wrapper.render_to_xr(head_img)
             if camera_config['left_wrist_camera']['enable_zmq']:
                 if args.record:
-                    left_wrist_img = img_client.get_left_wrist_frame()
+                    left_wrist_img = read_camera_frame(img_client.get_left_wrist_frame)
             if camera_config['right_wrist_camera']['enable_zmq']:
                 if args.record:
-                    right_wrist_img = img_client.get_right_wrist_frame()
+                    right_wrist_img = read_camera_frame(img_client.get_right_wrist_frame)
 
             # record mode
             if args.record and RECORD_TOGGLE:
@@ -433,33 +451,33 @@ if __name__ == '__main__':
                     depths = {}
                     if camera_config['head_camera']['binocular']:
                         if head_img is not None:
-                            colors[f"color_{0}"] = head_img.bgr[:, :camera_config['head_camera']['image_shape'][1]//2]
-                            colors[f"color_{1}"] = head_img.bgr[:, camera_config['head_camera']['image_shape'][1]//2:]
+                            colors[f"color_{0}"] = head_img[:, :camera_config['head_camera']['image_shape'][1]//2]
+                            colors[f"color_{1}"] = head_img[:, camera_config['head_camera']['image_shape'][1]//2:]
                         else:
                             logger_mp.warning("Head image is None!")
                         if camera_config['left_wrist_camera']['enable_zmq']:
                             if left_wrist_img is not None:
-                                colors[f"color_{2}"] = left_wrist_img.bgr
+                                colors[f"color_{2}"] = left_wrist_img
                             else:
                                 logger_mp.warning("Left wrist image is None!")
                         if camera_config['right_wrist_camera']['enable_zmq']:
                             if right_wrist_img is not None:
-                                colors[f"color_{3}"] = right_wrist_img.bgr
+                                colors[f"color_{3}"] = right_wrist_img
                             else:
                                 logger_mp.warning("Right wrist image is None!")
                     else:
                         if head_img is not None:
-                            colors[f"color_{0}"] = head_img.bgr
+                            colors[f"color_{0}"] = head_img
                         else:
                             logger_mp.warning("Head image is None!")
                         if camera_config['left_wrist_camera']['enable_zmq']:
                             if left_wrist_img is not None:
-                                colors[f"color_{1}"] = left_wrist_img.bgr
+                                colors[f"color_{1}"] = left_wrist_img
                             else:
                                 logger_mp.warning("Left wrist image is None!")
                         if camera_config['right_wrist_camera']['enable_zmq']:
                             if right_wrist_img is not None:
-                                colors[f"color_{2}"] = right_wrist_img.bgr
+                                colors[f"color_{2}"] = right_wrist_img
                             else:
                                 logger_mp.warning("Right wrist image is None!")
                     states = {

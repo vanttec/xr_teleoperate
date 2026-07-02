@@ -1,0 +1,19 @@
+<?xml version="1.0" ?>
+<robot name="g1_left_hand">
+    <link name="left_hand_palm"/>
+    <link name="left_hand_thumb_link"/>
+    <link name="left_hand_index_link"/>
+    <link name="left_hand_middle_link"/>
+    <joint name="left_hand_thumb_joint" type="revolute">
+        <parent link="left_hand_palm"/><child link="left_hand_thumb_link"/>
+        <axis xyz="0 0 1"/><limit effort="100" lower="-1.57" upper="1.57" velocity="1.0"/>
+    </joint>
+    <joint name="left_hand_index_joint" type="revolute">
+        <parent link="left_hand_palm"/><child link="left_hand_index_link"/>
+        <axis xyz="0 0 1"/><limit effort="100" lower="-1.57" upper="1.57" velocity="1.0"/>
+    </joint>
+    <joint name="left_hand_middle_joint" type="revolute">
+        <parent link="left_hand_palm"/><child link="left_hand_middle_link"/>
+        <axis xyz="0 0 1"/><limit effort="100" lower="-1.57" upper="1.57" velocity="1.0"/>
+    </joint>
+</robot>

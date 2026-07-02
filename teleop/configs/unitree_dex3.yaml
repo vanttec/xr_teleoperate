@@ -1,0 +1,16 @@
+left:
+  type: position
+  urdf_path: g1/g1_left_hand.urdf
+  links_to_keep: [left_hand_palm]
+  left_indices: [[0, 0, 0, 0, 0], [4, 8, 12, 16, 20]]
+  target_link_human_indices_vector: [0, 4, 8, 12, 16, 20]
+  finger_tip_link_names: [left_hand_thumb_link, left_hand_index_link, left_hand_middle_link]
+  scaling_factor: 1.0
+right:
+  type: position
+  urdf_path: g1/g1_right_hand.urdf
+  links_to_keep: [right_hand_palm]
+  right_indices: [[0, 0, 0, 0, 0], [4, 8, 12, 16, 20]]
+  target_link_human_indices_vector: [0, 4, 8, 12, 16, 20]
+  finger_tip_link_names: [right_hand_thumb_link, right_hand_index_link, right_hand_middle_link]
+  scaling_factor: 1.0
